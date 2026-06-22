@@ -2,7 +2,7 @@
 
 여러 터미널(iTerm 분할)에서 무슨 작업을 돌리는지 휴대폰에서 정리하는 보드 PWA.
 
-🔗 **https://dh-jeon.github.io/terminal-board/**
+🔗 **https://dh-jeon.github.io/Terminal-board/**
 
 ## 기능
 
