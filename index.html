@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<!-- Created: 2026-06-23 -->
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>터미널 보드</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="터미널 보드">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%; width: 100%; overflow: hidden;
+    background: #000; color: #e6e6e6;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    -webkit-user-select: none; user-select: none;
+  }
+  #app { display: flex; height: 100%; width: 100%; }
+
+  /* ===== 왼쪽 보드 ===== */
+  #board { flex: 1; min-width: 0; min-height: 0; padding: 6px; display: flex; }
+  #board > * { flex: 1 1 0; min-width: 0; min-height: 0; }
+  .node { display: flex; gap: 6px; width: 100%; height: 100%; }
+  .node.row { flex-direction: row; }
+  .node.col { flex-direction: column; }
+  .node > * { flex: 1 1 0; min-width: 0; min-height: 0; }
+
+  .pane {
+    position: relative;
+    background: #0b0b0b;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 8px; overflow: hidden;
+    touch-action: none;
+    transition: border-color .12s, background .12s;
+  }
+  .pane.empty { border-style: dashed; border-color: #333; }
+  .pane.drop-target { border-color: #4da3ff; background: #11202e; }
+  .pane.dragging { opacity: .35; }
+  .pane-title {
+    font-size: 14px; font-weight: 600; color: #d8e6ff;
+    text-align: center; word-break: break-word;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .pane-empty-hint { font-size: 12px; color: #555; }
+  .pane-dot { position: absolute; top: 6px; left: 8px; font-size: 10px; color: #444; }
+
+  /* ===== 오른쪽 사이드바 ===== */
+  #sidebar {
+    width: 22%; min-width: 170px; max-width: 280px;
+    background: #070707; border-left: 1px solid #222;
+    display: flex; flex-direction: column;
+  }
+  #add-btn {
+    margin: 8px; padding: 10px; flex: 0 0 auto;
+    background: #1a2b3d; color: #cfe4ff; border: 1px solid #2f4a66;
+    border-radius: 8px; font-size: 15px; font-weight: 600;
+  }
+  #add-btn:active { background: #244463; }
+  #todo-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; -webkit-overflow-scrolling: touch; }
+  .todo-item {
+    background: #121212; border: 1px solid #2a2a2a; border-radius: 8px;
+    padding: 10px; margin-bottom: 8px; touch-action: none;
+  }
+  .todo-item.dragging { opacity: .35; }
+  .todo-item .t-title { font-size: 14px; font-weight: 600; color: #eaeaea; word-break: break-word; }
+  .todo-item .t-memo {
+    font-size: 11px; color: #888; margin-top: 3px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  #empty-list { color: #444; font-size: 12px; text-align: center; padding: 20px 8px; }
+
+  /* ===== 드래그 고스트 ===== */
+  #ghost {
+    position: fixed; z-index: 1000; pointer-events: none;
+    background: #1b2c40; border: 1px solid #4da3ff; border-radius: 8px;
+    padding: 8px 12px; font-size: 13px; font-weight: 600; color: #cfe4ff;
+    max-width: 200px; box-shadow: 0 6px 20px rgba(0,0,0,.6);
+    display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* ===== 모달/팝업 공통 ===== */
+  #overlay {
+    position: fixed; inset: 0; z-index: 900;
+    background: rgba(0,0,0,.6); display: none;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  #overlay.show { display: flex; }
+  .modal {
+    background: #141414; border: 1px solid #333; border-radius: 14px;
+    padding: 18px; width: 100%; max-width: 420px; max-height: 90%; overflow-y: auto;
+  }
+  .modal h3 { font-size: 16px; margin-bottom: 12px; color: #fff; word-break: break-word; }
+  .modal .memo-view { font-size: 13px; color: #bbb; white-space: pre-wrap; margin-bottom: 14px; word-break: break-word; }
+  .modal input, .modal textarea {
+    width: 100%; background: #0c0c0c; color: #eee; border: 1px solid #333;
+    border-radius: 8px; padding: 10px; font-size: 14px; margin-bottom: 10px;
+    font-family: inherit; -webkit-user-select: text; user-select: text;
+  }
+  .modal textarea { min-height: 80px; resize: vertical; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .btn {
+    flex: 1 1 auto; padding: 11px; border-radius: 8px; font-size: 14px; font-weight: 600;
+    border: 1px solid #333; background: #1d1d1d; color: #ddd; min-width: 90px;
+  }
+  .btn:active { filter: brightness(1.3); }
+  .btn.primary { background: #1a3a5c; border-color: #2f6090; color: #cfe4ff; }
+  .btn.green { background: #163a23; border-color: #2c6b41; color: #c6f0d2; }
+  .btn.amber { background: #3d3015; border-color: #6b5524; color: #f0e2c0; }
+  .btn.red { background: #3d1717; border-color: #6b2b2b; color: #f0c6c6; }
+  .btn.ghost-btn { background: transparent; color: #999; }
+
+  /* ===== 토스트 ===== */
+  #toast {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: #222; color: #eee; padding: 10px 16px; border-radius: 20px;
+    font-size: 13px; z-index: 1100; opacity: 0; transition: opacity .2s; pointer-events: none;
+    border: 1px solid #444; max-width: 80%; text-align: center;
+  }
+  #toast.show { opacity: 1; }
+
+  /* ===== 세로 모드 안내 ===== */
+  #rotate-hint {
+    position: fixed; inset: 0; z-index: 2000; background: #000;
+    display: none; align-items: center; justify-content: center;
+    color: #888; font-size: 16px; text-align: center; padding: 30px; line-height: 1.6;
+  }
+  @media (orientation: portrait) and (max-width: 820px) {
+    #rotate-hint { display: flex; }
+  }
+</style>
+</head>
+<body>
+  <div id="app">
+    <div id="board"></div>
+    <div id="sidebar">
+      <button id="add-btn">＋ 할일 추가</button>
+      <div id="todo-list"></div>
+    </div>
+  </div>
+
+  <div id="ghost"></div>
+  <div id="overlay"></div>
+  <div id="toast"></div>
+  <div id="rotate-hint">📱 가로로 돌려서 사용해 주세요</div>
+
+<script>
+"use strict";
+
+/* ===================== 상태 ===================== */
+const STORAGE_KEY = "terminalBoard";
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+function defaultState() {
+  return {
+    allTodos: {},                                  // id -> {title, memo}
+    unplaced: [],                                  // 오른쪽 목록 순서 (id 배열)
+    layout: { id: uid(), type: "pane", todoId: null }
+  };
+}
+
+let state = loadState();
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultState();
+    const s = JSON.parse(raw);
+    if (!s.allTodos || !s.layout) return defaultState();
+    return s;
+  } catch (e) {
+    return defaultState();
+  }
+}
+
+function saveState() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  catch (e) { toast("저장 실패: 저장공간 확인 필요"); }
+}
+
+/* ===================== 트리 헬퍼 ===================== */
+function findPane(node, id) {
+  if (node.type === "pane") return node.id === id ? node : null;
+  return findPane(node.a, id) || findPane(node.b, id);
+}
+// id를 가진 노드의 부모 split 반환 (없으면 null)
+function findParent(node, id, parent) {
+  if (node.id === id) return parent || null;
+  if (node.type === "split") return findParent(node.a, id, node) || findParent(node.b, id, node);
+  return null;
+}
+
+/* ===================== 할일 조작 ===================== */
+function addTodo(title, memo) {
+  const id = uid();
+  state.allTodos[id] = { title: title.trim(), memo: (memo || "").trim() };
+  state.unplaced.unshift(id);                       // 목록 최상단
+  saveState(); renderTodos();
+}
+
+function editTodo(id, title, memo) {
+  if (!state.allTodos[id]) return;
+  state.allTodos[id] = { title: title.trim(), memo: (memo || "").trim() };
+  saveState(); renderAll();
+}
+
+// 할일 완전 삭제 (오른쪽 목록에서, 혹은 어디서든)
+function deleteTodo(id) {
+  removeFromUnplaced(id);
+  // 배치된 pane에서도 제거
+  detachTodoFromPanes(id);
+  delete state.allTodos[id];
+  saveState(); renderAll();
+}
+
+function removeFromUnplaced(id) {
+  const i = state.unplaced.indexOf(id);
+  if (i >= 0) state.unplaced.splice(i, 1);
+}
+
+function detachTodoFromPanes(id) {
+  (function walk(n) {
+    if (n.type === "pane") { if (n.todoId === id) n.todoId = null; }
+    else { walk(n.a); walk(n.b); }
+  })(state.layout);
+}
+
+// 오른쪽 할일 → pane 배치
+function placeTodo(todoId, paneId) {
+  const pane = findPane(state.layout, paneId);
+  if (!pane) return;
+  if (pane.todoId) { toast("이미 할일이 있는 칸입니다"); return; }
+  removeFromUnplaced(todoId);
+  pane.todoId = todoId;
+  saveState(); renderAll();
+}
+
+// 완료: 할일 완전 제거 + pane 비움
+function completeTodo(paneId) {
+  const pane = findPane(state.layout, paneId);
+  if (!pane || !pane.todoId) return;
+  const id = pane.todoId;
+  pane.todoId = null;
+  delete state.allTodos[id];
+  saveState(); renderAll();
+  toast("완료 처리됨");
+}
+
+// 미루기: 할일 오른쪽 목록 복귀 + pane 비움
+function postponeTodo(paneId) {
+  const pane = findPane(state.layout, paneId);
+  if (!pane || !pane.todoId) return;
+  const id = pane.todoId;
+  pane.todoId = null;
+  if (!state.unplaced.includes(id)) state.unplaced.unshift(id);
+  saveState(); renderAll();
+  toast("오른쪽 목록으로 미뤘습니다");
+}
+
+/* ===================== 분할 / 병합 ===================== */
+// dir: "row"(세로 분할=좌우) | "col"(가로 분할=위아래)
+function splitPane(paneId, dir) {
+  const pane = findPane(state.layout, paneId);
+  if (!pane) return;
+  const keep = { id: pane.id, type: "pane", todoId: pane.todoId };
+  const fresh = { id: uid(), type: "pane", todoId: null };
+  // 기존 pane 객체를 split으로 변환 (참조 유지)
+  pane.type = "split";
+  pane.dir = dir;
+  pane.a = keep;
+  pane.b = fresh;
+  delete pane.todoId;
+  pane.id = uid();
+  saveState(); renderAll();
+}
+
+// 두 pane이 같은 split의 형제인지
+function areSiblings(idA, idB) {
+  const pA = findParent(state.layout, idA);
+  const pB = findParent(state.layout, idB);
+  return pA && pA === pB;
+}
+
+// 형제 두 pane 병합 → 부모 split을 빈 pane으로 collapse, 두 할일은 오른쪽 복귀
+function mergePanes(idA, idB) {
+  const parent = findParent(state.layout, idA);
+  if (!parent || parent.type !== "split") return;
+  if (parent.a.id !== idB && parent.b.id !== idB) return;
+  // 두 자식이 모두 pane이어야 단순 병합 (split이면 막음)
+  if (parent.a.type !== "pane" || parent.b.type !== "pane") {
+    toast("분할된 칸은 병합할 수 없습니다"); return;
+  }
+  [parent.a.todoId, parent.b.todoId].forEach(id => {
+    if (id && !state.unplaced.includes(id)) state.unplaced.unshift(id);
+  });
+  // parent를 빈 pane으로 변환
+  parent.type = "pane";
+  parent.todoId = null;
+  delete parent.dir; delete parent.a; delete parent.b;
+  saveState(); renderAll();
+  toast("병합되었습니다");
+}
+
+/* ===================== 렌더링 ===================== */
+const boardEl = document.getElementById("board");
+const listEl = document.getElementById("todo-list");
+
+function renderAll() { renderBoard(); renderTodos(); }
+
+function renderBoard() {
+  boardEl.innerHTML = "";
+  boardEl.appendChild(buildNode(state.layout));
+}
+
+function buildNode(node) {
+  if (node.type === "pane") return buildPane(node);
+  const el = document.createElement("div");
+  el.className = "node " + (node.dir === "col" ? "col" : "row");
+  el.appendChild(buildNode(node.a));
+  el.appendChild(buildNode(node.b));
+  return el;
+}
+
+function buildPane(node) {
+  const el = document.createElement("div");
+  el.className = "pane" + (node.todoId ? "" : " empty");
+  el.dataset.paneId = node.id;
+  const dot = document.createElement("div");
+  dot.className = "pane-dot"; dot.textContent = "◻︎";
+  el.appendChild(dot);
+  if (node.todoId && state.allTodos[node.todoId]) {
+    const t = document.createElement("div");
+    t.className = "pane-title";
+    t.textContent = state.allTodos[node.todoId].title || "(제목 없음)";
+    el.appendChild(t);
+  } else {
+    const h = document.createElement("div");
+    h.className = "pane-empty-hint";
+    h.textContent = "탭하여 분할 / 할일 드롭";
+    el.appendChild(h);
+  }
+  return el;
+}
+
+function renderTodos() {
+  listEl.innerHTML = "";
+  if (state.unplaced.length === 0) {
+    const e = document.createElement("div");
+    e.id = "empty-list";
+    e.textContent = "할일이 없습니다.\n＋로 추가하세요.";
+    e.style.whiteSpace = "pre-line";
+    listEl.appendChild(e);
+    return;
+  }
+  state.unplaced.forEach(id => {
+    const todo = state.allTodos[id];
+    if (!todo) return;
+    const el = document.createElement("div");
+    el.className = "todo-item";
+    el.dataset.todoId = id;
+    const t = document.createElement("div");
+    t.className = "t-title"; t.textContent = todo.title || "(제목 없음)";
+    el.appendChild(t);
+    if (todo.memo) {
+      const m = document.createElement("div");
+      m.className = "t-memo"; m.textContent = todo.memo;
+      el.appendChild(m);
+    }
+    listEl.appendChild(el);
+  });
+}
+
+/* ===================== 모달 / 토스트 ===================== */
+const overlay = document.getElementById("overlay");
+
+function openModal(html) {
+  overlay.innerHTML = '<div class="modal">' + html + "</div>";
+  overlay.classList.add("show");
+}
+function closeModal() { overlay.classList.remove("show"); overlay.innerHTML = ""; }
+overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
+
+let toastTimer = null;
+const toastEl = document.getElementById("toast");
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1600);
+}
+
+function esc(s) {
+  return (s || "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* ----- 할일 추가 모달 ----- */
+function openAddTodo() {
+  openModal(
+    "<h3>할일 추가</h3>" +
+    '<input id="m-title" placeholder="제목" autocomplete="off">' +
+    '<textarea id="m-memo" placeholder="메모 (선택)"></textarea>' +
+    '<div class="btn-row">' +
+      '<button class="btn ghost-btn" id="m-cancel">취소</button>' +
+      '<button class="btn primary" id="m-save">추가</button>' +
+    "</div>"
+  );
+  document.getElementById("m-title").focus();
+  document.getElementById("m-cancel").onclick = closeModal;
+  document.getElementById("m-save").onclick = () => {
+    const title = document.getElementById("m-title").value;
+    if (!title.trim()) { toast("제목을 입력하세요"); return; }
+    addTodo(title, document.getElementById("m-memo").value);
+    closeModal();
+  };
+}
+
+/* ----- 할일 상세/편집 모달 (오른쪽 목록 탭) ----- */
+function openTodoDetail(id) {
+  const todo = state.allTodos[id];
+  if (!todo) return;
+  openModal(
+    "<h3>할일 보기</h3>" +
+    '<input id="m-title" value="' + esc(todo.title) + '">' +
+    '<textarea id="m-memo" placeholder="메모 (선택)">' + esc(todo.memo) + "</textarea>" +
+    '<div class="btn-row">' +
+      '<button class="btn red" id="m-del">삭제</button>' +
+      '<button class="btn ghost-btn" id="m-cancel">닫기</button>' +
+      '<button class="btn primary" id="m-save">저장</button>' +
+    "</div>"
+  );
+  document.getElementById("m-cancel").onclick = closeModal;
+  document.getElementById("m-save").onclick = () => {
+    const title = document.getElementById("m-title").value;
+    if (!title.trim()) { toast("제목을 입력하세요"); return; }
+    editTodo(id, title, document.getElementById("m-memo").value);
+    closeModal();
+  };
+  document.getElementById("m-del").onclick = () => {
+    deleteTodo(id); closeModal();
+  };
+}
+
+/* ----- pane 탭 팝업 ----- */
+function openPanePopup(paneId) {
+  const pane = findPane(state.layout, paneId);
+  if (!pane) return;
+  let html = "<h3>칸 작업</h3>";
+  if (pane.todoId && state.allTodos[pane.todoId]) {
+    const t = state.allTodos[pane.todoId];
+    html += '<input id="p-title" value="' + esc(t.title) + '">';
+    html += '<textarea id="p-memo" placeholder="메모 (선택)">' + esc(t.memo) + "</textarea>";
+    html += '<div class="btn-row">' +
+              '<button class="btn green" id="p-done">완료</button>' +
+              '<button class="btn amber" id="p-postpone">미루기</button>' +
+              '<button class="btn" id="p-save">메모 저장</button>' +
+            "</div>";
+  } else {
+    html += '<div class="memo-view">빈 칸입니다. 분할하거나 오른쪽 할일을 드래그해 배치하세요.</div>';
+  }
+  html += '<div class="btn-row" style="margin-top:14px;border-top:1px solid #2a2a2a;padding-top:14px;">' +
+            '<button class="btn primary" id="p-split-col">⬍ 가로 분할</button>' +
+            '<button class="btn primary" id="p-split-row">⬌ 세로 분할</button>' +
+          "</div>" +
+          '<div class="btn-row"><button class="btn ghost-btn" id="p-close">닫기</button></div>';
+  openModal(html);
+
+  document.getElementById("p-close").onclick = closeModal;
+  document.getElementById("p-split-col").onclick = () => { splitPane(paneId, "col"); closeModal(); };
+  document.getElementById("p-split-row").onclick = () => { splitPane(paneId, "row"); closeModal(); };
+  if (pane.todoId) {
+    document.getElementById("p-done").onclick = () => { completeTodo(paneId); closeModal(); };
+    document.getElementById("p-postpone").onclick = () => { postponeTodo(paneId); closeModal(); };
+    document.getElementById("p-save").onclick = () => {
+      editTodo(pane.todoId, document.getElementById("p-title").value, document.getElementById("p-memo").value);
+      closeModal();
+    };
+  }
+}
+
+/* ----- 병합 confirm ----- */
+function openMergeConfirm(idA, idB) {
+  openModal(
+    "<h3>두 칸을 병합할까요?</h3>" +
+    '<div class="memo-view">두 칸이 하나로 합쳐지고, 배치된 할일은 오른쪽 목록으로 돌아갑니다.</div>' +
+    '<div class="btn-row">' +
+      '<button class="btn ghost-btn" id="mg-cancel">취소</button>' +
+      '<button class="btn red" id="mg-ok">병합</button>' +
+    "</div>"
+  );
+  document.getElementById("mg-cancel").onclick = closeModal;
+  document.getElementById("mg-ok").onclick = () => { mergePanes(idA, idB); closeModal(); };
+}
+
+/* ===================== 드래그 / 탭 (Pointer Events) ===================== */
+const ghost = document.getElementById("ghost");
+const DRAG_THRESHOLD = 8;
+
+let drag = null; // {kind:'todo'|'pane', id, startX, startY, moved, lastTarget}
+
+document.getElementById("add-btn").addEventListener("click", openAddTodo);
+
+document.addEventListener("pointerdown", e => {
+  const todoItem = e.target.closest(".todo-item");
+  const paneItem = e.target.closest(".pane");
+  if (overlay.classList.contains("show")) return;
+  if (todoItem) {
+    drag = { kind: "todo", id: todoItem.dataset.todoId, el: todoItem,
+             startX: e.clientX, startY: e.clientY, moved: false, lastTarget: null };
+  } else if (paneItem) {
+    drag = { kind: "pane", id: paneItem.dataset.paneId, el: paneItem,
+             startX: e.clientX, startY: e.clientY, moved: false, lastTarget: null };
+  }
+});
+
+document.addEventListener("pointermove", e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+  if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+
+  if (!drag.moved) {
+    drag.moved = true;
+    drag.el.classList.add("dragging");
+    ghost.style.display = "block";
+    ghost.textContent = drag.kind === "todo"
+      ? (state.allTodos[drag.id]?.title || "할일")
+      : "이 칸 → 옆 칸에 놓아 병합";
+  }
+  ghost.style.left = (e.clientX + 12) + "px";
+  ghost.style.top = (e.clientY + 12) + "px";
+
+  // 드롭 타깃 하이라이트
+  const tgt = paneUnder(e.clientX, e.clientY);
+  if (drag.lastTarget && drag.lastTarget !== tgt) drag.lastTarget.classList.remove("drop-target");
+  if (tgt && tgt !== drag.el) { tgt.classList.add("drop-target"); drag.lastTarget = tgt; }
+  else if (!tgt) drag.lastTarget = null;
+});
+
+document.addEventListener("pointerup", e => {
+  if (!drag) return;
+  const d = drag; drag = null;
+  ghost.style.display = "none";
+  d.el.classList.remove("dragging");
+  if (d.lastTarget) d.lastTarget.classList.remove("drop-target");
+
+  if (!d.moved) {
+    // 탭 처리
+    if (d.kind === "todo") openTodoDetail(d.id);
+    else openPanePopup(d.id);
+    return;
+  }
+
+  const tgtPane = paneUnder(e.clientX, e.clientY);
+  if (!tgtPane) return;
+  const tgtId = tgtPane.dataset.paneId;
+
+  if (d.kind === "todo") {
+    placeTodo(d.id, tgtId);
+  } else { // pane → pane
+    if (tgtId === d.id) return;
+    if (areSiblings(d.id, tgtId)) openMergeConfirm(d.id, tgtId);
+    else toast("인접한(같은 분할의) 칸끼리만 병합됩니다");
+  }
+});
+
+document.addEventListener("pointercancel", () => {
+  if (!drag) return;
+  ghost.style.display = "none";
+  drag.el.classList.remove("dragging");
+  if (drag.lastTarget) drag.lastTarget.classList.remove("drop-target");
+  drag = null;
+});
+
+function paneUnder(x, y) {
+  const els = document.elementsFromPoint(x, y);
+  for (const el of els) {
+    const p = el.closest && el.closest(".pane");
+    if (p) return p;
+  }
+  return null;
+}
+
+/* ===================== 시작 ===================== */
+renderAll();
+</script>
+</body>
+</html>
