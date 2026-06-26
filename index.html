@@ -91,9 +91,9 @@
   .todo-row { position: relative; margin-bottom: 8px; border-radius: 8px; overflow: hidden; }
   .todo-del-bg {
     position: absolute; inset: 0; border-radius: 8px;
-    background: #c0392b; color: #fff; font-size: 20px;
-    display: flex; align-items: center; justify-content: flex-start;
-    padding-left: 24px;
+    background: #c0392b; color: #fff; font-size: 15px; font-weight: 600;
+    display: flex; align-items: center; justify-content: flex-end;
+    padding-right: 28px;
   }
   .todo-item {
     position: relative; z-index: 1;
@@ -434,7 +434,7 @@ function renderTodos() {
     const bg = document.createElement("div");
     bg.className = "todo-del-bg";
     bg.dataset.delId = id;
-    bg.textContent = "🗑";
+    bg.textContent = "삭제";
     row.appendChild(bg);
     const el = document.createElement("div");
     el.className = "todo-item";
@@ -601,19 +601,20 @@ let openSwipe = null; // 현재 열려있는(쓰레기통 노출) 할일 {id, el
 function finishSwipe(d) {
   const el = d.el;
   const w = el.offsetWidth || 240;
-  const tx = d.curTx || 0;
+  const tx = d.curTx || 0;            // 왼쪽으로 밀면 음수
+  const mag = -tx;                    // 왼쪽 이동량(양수)
   const DEL = Math.min(w * 0.5, 160); // 삭제 임계
-  const PEEK = 72;                    // 쓰레기통 노출 폭
+  const PEEK = 72;                    // 삭제 버튼 노출 폭
   el.classList.remove("swiping");
   el.classList.add("snap");
-  if (tx >= DEL) {
-    el.style.transform = "translateX(" + w + "px)";
+  if (mag >= DEL) {
+    el.style.transform = "translateX(" + (-w) + "px)";
     openSwipe = null;
     const id = d.id;
     setTimeout(() => deleteTodo(id), 180);
-  } else if (tx >= 36) {
-    el.style.transform = "translateX(" + PEEK + "px)";
-    openSwipe = { id: d.id, el: el, tx: PEEK };
+  } else if (mag >= 36) {
+    el.style.transform = "translateX(" + (-PEEK) + "px)";
+    openSwipe = { id: d.id, el: el, tx: -PEEK };
   } else {
     el.style.transform = "translateX(0)";
     if (openSwipe && openSwipe.id === d.id) openSwipe = null;
@@ -633,13 +634,18 @@ document.getElementById("add-btn").addEventListener("click", openAddTodo);
 
 document.addEventListener("pointerdown", e => {
   if (overlay.classList.contains("show")) return;
-  // 노출된 쓰레기통 탭 → 삭제
+  // 노출된 삭제 버튼 탭 → 삭제
   const delBg = e.target.closest(".todo-del-bg");
   if (delBg) {
     if (openSwipe && openSwipe.id === delBg.dataset.delId) {
       const id = openSwipe.id; openSwipe = null; deleteTodo(id);
     }
     return;
+  }
+  // 삭제 버튼이 열린 상태에서 그 항목 바깥을 누르면 → 닫기만 하고 탭 소비(메모장 동작)
+  if (openSwipe) {
+    const ti = e.target.closest(".todo-item");
+    if (!ti || ti.dataset.todoId !== openSwipe.id) { closeSwipe(); return; }
   }
   const todoItem = e.target.closest(".todo-item");
   const paneItem = e.target.closest(".pane");
@@ -662,9 +668,9 @@ document.addEventListener("pointermove", e => {
 
   if (!drag.moved) {
     drag.moved = true;
-    // 방향 판별: 할일을 오른쪽으로 밀면 스와이프 삭제, 그 외엔 기존 드래그
+    // 방향 판별: 할일을 왼쪽으로 밀면 스와이프 삭제, 그 외엔 기존 드래그
     if (drag.kind === "todo" &&
-        (drag.startTx > 0 || (Math.abs(dx) >= Math.abs(dy) && dx > 0))) {
+        (drag.startTx < 0 || (Math.abs(dx) >= Math.abs(dy) && dx < 0))) {
       drag.mode = "swipe";
       if (openSwipe && openSwipe.id !== drag.id) closeSwipe();
     } else {
@@ -681,7 +687,7 @@ document.addEventListener("pointermove", e => {
     drag.el.classList.remove("snap");
     drag.el.classList.add("swiping");
     let tx = drag.startTx + dx;
-    if (tx < 0) tx = 0;
+    if (tx > 0) tx = 0;
     drag.curTx = tx;
     drag.el.style.transform = "translateX(" + tx + "px)";
     return;
