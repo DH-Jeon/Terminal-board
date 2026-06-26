@@ -432,15 +432,15 @@ function buildPane(node) {
   const dot = document.createElement("div");
   dot.className = "pane-dot"; dot.textContent = "◻︎";
   el.appendChild(dot);
-  // clawd 캐릭터: 포즈가 없으면 랜덤 배정(새로고침해도 유지), 터치하면 교체
-  if (!node.pose) { node.pose = randomPose(); saveState(); }
-  const clawd = document.createElement("img");
-  clawd.className = "pane-clawd " + clawdAnchor(node.pose);
-  clawd.src = "assets/clawd/" + node.pose;
-  clawd.alt = "clawd";
-  clawd.draggable = false;
-  el.appendChild(clawd);
   if (node.todoId && state.allTodos[node.todoId]) {
+    // clawd 캐릭터: 할일이 올라간 칸에만. 포즈가 없으면 랜덤 배정(새로고침해도 유지), 터치하면 교체
+    if (!node.pose) { node.pose = randomPose(); saveState(); }
+    const clawd = document.createElement("img");
+    clawd.className = "pane-clawd " + clawdAnchor(node.pose);
+    clawd.src = "assets/clawd/" + node.pose;
+    clawd.alt = "clawd";
+    clawd.draggable = false;
+    el.appendChild(clawd);
     const todo = state.allTodos[node.todoId];
     const body = document.createElement("div");
     body.className = "pane-body";
