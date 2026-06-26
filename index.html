@@ -690,6 +690,11 @@ function closeSwipe() {
   openSwipe = null;
 }
 
+// 세로(할일 관리 전용) 모드 여부 — CSS 미디어쿼리와 동일 조건
+function isPortrait() {
+  return window.matchMedia("(orientation: portrait) and (max-width: 820px)").matches;
+}
+
 document.getElementById("add-btn").addEventListener("click", openAddTodo);
 
 document.addEventListener("pointerdown", e => {
@@ -731,8 +736,8 @@ document.addEventListener("pointermove", e => {
 
   if (!drag.moved) {
     drag.moved = true;
-    // 방향 판별: 할일을 왼쪽으로 밀면 스와이프 삭제, 그 외엔 기존 드래그
-    if (drag.kind === "todo" &&
+    // 방향 판별: 할일을 왼쪽으로 밀면 스와이프 삭제(세로 모드 전용), 그 외엔 기존 드래그
+    if (drag.kind === "todo" && isPortrait() &&
         (drag.startTx < 0 || (Math.abs(dx) >= Math.abs(dy) && dx < 0))) {
       drag.mode = "swipe";
       if (openSwipe && openSwipe.id !== drag.id) closeSwipe();
