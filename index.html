@@ -56,6 +56,22 @@
   }
   .pane-empty-hint { font-size: 12px; color: #555; }
   .pane-dot { position: absolute; top: 6px; left: 8px; font-size: 10px; color: #444; }
+  .pane-clawd {
+    position: absolute; z-index: 1;
+    image-rendering: pixelated;
+    pointer-events: auto; cursor: pointer;
+    -webkit-user-drag: none; user-select: none;
+  }
+  .pane-clawd.floor {
+    left: 50%; bottom: 0; transform: translateX(-50%);
+    width: 64px; height: 64px;
+    object-fit: contain; object-position: center bottom;
+  }
+  .pane-clawd.wall-right {
+    right: -1px; bottom: 8px;
+    width: 56px; height: 56px;
+    object-fit: contain; object-position: right bottom;
+  }
 
   /* ===== 오른쪽 사이드바 ===== */
   #sidebar {
@@ -214,6 +230,30 @@ const STORAGE_KEY = "terminalBoard";
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
+/* ===================== clawd 캐릭터 ===================== */
+// 칸마다 랜덤으로 뜨고, 터치하면 다른 포즈로 바뀐다.
+const CLAWD_POSES = [
+  "clawd-idle.gif", "clawd-idle-reading.gif", "clawd-happy.gif", "clawd-thinking.gif",
+  "clawd-typing.gif", "clawd-building.gif", "clawd-carrying.gif", "clawd-conducting.gif",
+  "clawd-juggling.gif", "clawd-sweeping.gif", "clawd-debugger.gif", "clawd-error.gif",
+  "clawd-sleeping.gif", "clawd-headphones-groove.gif", "clawd-notification.gif", "clawd-bubble.gif",
+  "clawd-react-annoyed.gif", "clawd-react-double-jump.gif",
+  "clawd-mini-idle.gif", "clawd-mini-peek.gif", "clawd-mini-crabwalk.gif",
+  "clawd-mini-enter.gif", "clawd-mini-alert.gif", "clawd-mini-happy.gif"
+];
+// mini류는 오른쪽 벽에서 빼꼼 나오는 형태 → 오른쪽 가장자리에 붙인다. 나머지는 바닥에 세운다.
+const CLAWD_WALL = new Set([
+  "clawd-mini-idle.gif", "clawd-mini-peek.gif", "clawd-mini-crabwalk.gif",
+  "clawd-mini-enter.gif", "clawd-mini-alert.gif", "clawd-mini-happy.gif"
+]);
+function clawdAnchor(file) { return CLAWD_WALL.has(file) ? "wall-right" : "floor"; }
+function randomPose(except) {
+  let p;
+  do { p = CLAWD_POSES[Math.floor(Math.random() * CLAWD_POSES.length)]; }
+  while (p === except && CLAWD_POSES.length > 1);
+  return p;
+}
+
 function defaultState() {
   return {
     allTodos: {},                                  // id -> {title, memo}
@@ -325,7 +365,7 @@ function postponeTodo(paneId) {
 function splitPane(paneId, dir) {
   const pane = findPane(state.layout, paneId);
   if (!pane) return;
-  const keep = { id: pane.id, type: "pane", todoId: pane.todoId };
+  const keep = { id: pane.id, type: "pane", todoId: pane.todoId, pose: pane.pose };
   const fresh = { id: uid(), type: "pane", todoId: null };
   // 기존 pane 객체를 split으로 변환 (참조 유지)
   pane.type = "split";
@@ -333,6 +373,7 @@ function splitPane(paneId, dir) {
   pane.a = keep;
   pane.b = fresh;
   delete pane.todoId;
+  delete pane.pose;
   pane.id = uid();
   saveState(); renderAll();
 }
@@ -391,6 +432,14 @@ function buildPane(node) {
   const dot = document.createElement("div");
   dot.className = "pane-dot"; dot.textContent = "◻︎";
   el.appendChild(dot);
+  // clawd 캐릭터: 포즈가 없으면 랜덤 배정(새로고침해도 유지), 터치하면 교체
+  if (!node.pose) { node.pose = randomPose(); saveState(); }
+  const clawd = document.createElement("img");
+  clawd.className = "pane-clawd " + clawdAnchor(node.pose);
+  clawd.src = "assets/clawd/" + node.pose;
+  clawd.alt = "clawd";
+  clawd.draggable = false;
+  el.appendChild(clawd);
   if (node.todoId && state.allTodos[node.todoId]) {
     const todo = state.allTodos[node.todoId];
     const body = document.createElement("div");
@@ -413,6 +462,17 @@ function buildPane(node) {
     el.appendChild(h);
   }
   return el;
+}
+
+// clawd 터치 → 현재와 다른 랜덤 포즈로 교체 (전체 재렌더 없이 이미지만 갱신)
+function cyclePose(paneEl, imgEl) {
+  const node = findPane(state.layout, paneEl.dataset.paneId);
+  if (!node) return;
+  const next = randomPose(node.pose);
+  node.pose = next;
+  saveState();
+  imgEl.src = "assets/clawd/" + next;
+  imgEl.className = "pane-clawd " + clawdAnchor(next);
 }
 
 function renderTodos() {
@@ -656,6 +716,9 @@ document.addEventListener("pointerdown", e => {
              startX: e.clientX, startY: e.clientY, moved: false, lastTarget: null,
              mode: null, startTx: startTx, curTx: startTx };
   } else if (paneItem) {
+    // clawd를 누르면 분할/드래그 대신 포즈만 교체
+    const clawd = e.target.closest(".pane-clawd");
+    if (clawd) { cyclePose(paneItem, clawd); return; }
     drag = { kind: "pane", id: paneItem.dataset.paneId, el: paneItem,
              startX: e.clientX, startY: e.clientY, moved: false, lastTarget: null, mode: null };
   }
