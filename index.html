@@ -88,10 +88,20 @@
   }
   #add-btn:active { background: #244463; }
   #todo-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; -webkit-overflow-scrolling: touch; }
-  .todo-item {
-    background: #121212; border: 1px solid #2a2a2a; border-radius: 8px;
-    padding: 10px; margin-bottom: 8px; touch-action: pan-y;
+  .todo-row { position: relative; margin-bottom: 8px; border-radius: 8px; overflow: hidden; }
+  .todo-del-bg {
+    position: absolute; inset: 0; border-radius: 8px;
+    background: #c0392b; color: #fff; font-size: 20px;
+    display: flex; align-items: center; justify-content: flex-start;
+    padding-left: 24px;
   }
+  .todo-item {
+    position: relative; z-index: 1;
+    background: #121212; border: 1px solid #2a2a2a; border-radius: 8px;
+    padding: 10px; touch-action: pan-y;
+  }
+  .todo-item.swiping { transition: none; }
+  .todo-item.snap { transition: transform .2s ease; }
   .todo-item.dragging { opacity: .35; }
   .todo-item .t-title { font-size: 14px; font-weight: 600; color: #eaeaea; word-break: break-word; }
   .todo-item .t-memo {
@@ -406,6 +416,7 @@ function buildPane(node) {
 }
 
 function renderTodos() {
+  openSwipe = null;
   listEl.innerHTML = "";
   if (state.unplaced.length === 0) {
     const e = document.createElement("div");
@@ -418,6 +429,13 @@ function renderTodos() {
   state.unplaced.forEach(id => {
     const todo = state.allTodos[id];
     if (!todo) return;
+    const row = document.createElement("div");
+    row.className = "todo-row";
+    const bg = document.createElement("div");
+    bg.className = "todo-del-bg";
+    bg.dataset.delId = id;
+    bg.textContent = "🗑";
+    row.appendChild(bg);
     const el = document.createElement("div");
     el.className = "todo-item";
     el.dataset.todoId = id;
@@ -429,17 +447,20 @@ function renderTodos() {
       m.className = "t-memo"; m.textContent = todo.memo;
       el.appendChild(m);
     }
-    listEl.appendChild(el);
+    row.appendChild(el);
+    listEl.appendChild(row);
   });
 }
 
 /* ===================== 모달 / 토스트 ===================== */
 const overlay = document.getElementById("overlay");
 
-function openModal(html) {
-  overlay.innerHTML = '<div class="modal"><button class="modal-x" id="modal-x" aria-label="닫기">✕</button>' + html + "</div>";
+function openModal(html, opts) {
+  const x = (opts && opts.noX) ? "" : '<button class="modal-x" id="modal-x" aria-label="닫기">✕</button>';
+  overlay.innerHTML = '<div class="modal">' + x + html + "</div>";
   overlay.classList.add("show");
-  document.getElementById("modal-x").onclick = closeModal;
+  const xb = document.getElementById("modal-x");
+  if (xb) xb.onclick = closeModal;
 }
 function closeModal() { overlay.classList.remove("show"); overlay.innerHTML = ""; }
 overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
@@ -491,7 +512,8 @@ function openTodoDetail(id) {
       '<button class="btn red" id="m-del">삭제</button>' +
       '<button class="btn ghost-btn" id="m-cancel">닫기</button>' +
       '<button class="btn primary" id="m-save">저장</button>' +
-    "</div>"
+    "</div>",
+    { noX: true }
   );
   document.getElementById("m-cancel").onclick = closeModal;
   document.getElementById("m-save").onclick = () => {
@@ -572,20 +594,64 @@ function openMergeConfirm(idA, idB) {
 const ghost = document.getElementById("ghost");
 const DRAG_THRESHOLD = 8;
 
-let drag = null; // {kind:'todo'|'pane', id, startX, startY, moved, lastTarget}
+let drag = null; // {kind:'todo'|'pane', id, startX, startY, moved, lastTarget, mode, startTx, curTx}
+let openSwipe = null; // 현재 열려있는(쓰레기통 노출) 할일 {id, el, tx}
+
+// 스와이프 종료 처리: 끝까지 밀면 삭제, 살짝 밀면 쓰레기통 노출 고정, 그 외 원위치
+function finishSwipe(d) {
+  const el = d.el;
+  const w = el.offsetWidth || 240;
+  const tx = d.curTx || 0;
+  const DEL = Math.min(w * 0.5, 160); // 삭제 임계
+  const PEEK = 72;                    // 쓰레기통 노출 폭
+  el.classList.remove("swiping");
+  el.classList.add("snap");
+  if (tx >= DEL) {
+    el.style.transform = "translateX(" + w + "px)";
+    openSwipe = null;
+    const id = d.id;
+    setTimeout(() => deleteTodo(id), 180);
+  } else if (tx >= 36) {
+    el.style.transform = "translateX(" + PEEK + "px)";
+    openSwipe = { id: d.id, el: el, tx: PEEK };
+  } else {
+    el.style.transform = "translateX(0)";
+    if (openSwipe && openSwipe.id === d.id) openSwipe = null;
+  }
+}
+
+function closeSwipe() {
+  if (!openSwipe) return;
+  const el = openSwipe.el;
+  el.classList.remove("swiping");
+  el.classList.add("snap");
+  el.style.transform = "translateX(0)";
+  openSwipe = null;
+}
 
 document.getElementById("add-btn").addEventListener("click", openAddTodo);
 
 document.addEventListener("pointerdown", e => {
+  if (overlay.classList.contains("show")) return;
+  // 노출된 쓰레기통 탭 → 삭제
+  const delBg = e.target.closest(".todo-del-bg");
+  if (delBg) {
+    if (openSwipe && openSwipe.id === delBg.dataset.delId) {
+      const id = openSwipe.id; openSwipe = null; deleteTodo(id);
+    }
+    return;
+  }
   const todoItem = e.target.closest(".todo-item");
   const paneItem = e.target.closest(".pane");
-  if (overlay.classList.contains("show")) return;
   if (todoItem) {
-    drag = { kind: "todo", id: todoItem.dataset.todoId, el: todoItem,
-             startX: e.clientX, startY: e.clientY, moved: false, lastTarget: null };
+    const id = todoItem.dataset.todoId;
+    const startTx = (openSwipe && openSwipe.id === id) ? openSwipe.tx : 0;
+    drag = { kind: "todo", id: id, el: todoItem,
+             startX: e.clientX, startY: e.clientY, moved: false, lastTarget: null,
+             mode: null, startTx: startTx, curTx: startTx };
   } else if (paneItem) {
     drag = { kind: "pane", id: paneItem.dataset.paneId, el: paneItem,
-             startX: e.clientX, startY: e.clientY, moved: false, lastTarget: null };
+             startX: e.clientX, startY: e.clientY, moved: false, lastTarget: null, mode: null };
   }
 });
 
@@ -596,12 +662,31 @@ document.addEventListener("pointermove", e => {
 
   if (!drag.moved) {
     drag.moved = true;
-    drag.el.classList.add("dragging");
-    ghost.style.display = "block";
-    ghost.textContent = drag.kind === "todo"
-      ? (state.allTodos[drag.id]?.title || "할일")
-      : "옆 칸=병합 / 오른쪽=목록으로";
+    // 방향 판별: 할일을 오른쪽으로 밀면 스와이프 삭제, 그 외엔 기존 드래그
+    if (drag.kind === "todo" &&
+        (drag.startTx > 0 || (Math.abs(dx) >= Math.abs(dy) && dx > 0))) {
+      drag.mode = "swipe";
+      if (openSwipe && openSwipe.id !== drag.id) closeSwipe();
+    } else {
+      drag.mode = "drag";
+      drag.el.classList.add("dragging");
+      ghost.style.display = "block";
+      ghost.textContent = drag.kind === "todo"
+        ? (state.allTodos[drag.id]?.title || "할일")
+        : "옆 칸=병합 / 오른쪽=목록으로";
+    }
   }
+
+  if (drag.mode === "swipe") {
+    drag.el.classList.remove("snap");
+    drag.el.classList.add("swiping");
+    let tx = drag.startTx + dx;
+    if (tx < 0) tx = 0;
+    drag.curTx = tx;
+    drag.el.style.transform = "translateX(" + tx + "px)";
+    return;
+  }
+
   ghost.style.left = (e.clientX + 12) + "px";
   ghost.style.top = (e.clientY + 12) + "px";
 
@@ -619,6 +704,9 @@ document.addEventListener("pointermove", e => {
 document.addEventListener("pointerup", e => {
   if (!drag) return;
   const d = drag; drag = null;
+
+  if (d.mode === "swipe") { finishSwipe(d); return; }
+
   ghost.style.display = "none";
   d.el.classList.remove("dragging");
   sidebarEl.classList.remove("drop-target-sb");
@@ -626,8 +714,10 @@ document.addEventListener("pointerup", e => {
 
   if (!d.moved) {
     // 탭 처리
-    if (d.kind === "todo") openTodoDetail(d.id);
-    else openPanePopup(d.id);
+    if (d.kind === "todo") {
+      if (openSwipe && openSwipe.id === d.id) closeSwipe();
+      else openTodoDetail(d.id);
+    } else openPanePopup(d.id);
     return;
   }
 
@@ -654,6 +744,7 @@ document.addEventListener("pointerup", e => {
 
 document.addEventListener("pointercancel", () => {
   if (!drag) return;
+  if (drag.mode === "swipe") { finishSwipe(drag); drag = null; return; }
   ghost.style.display = "none";
   drag.el.classList.remove("dragging");
   sidebarEl.classList.remove("drop-target-sb");
