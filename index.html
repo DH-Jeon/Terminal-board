@@ -190,18 +190,31 @@
     border-bottom: 1px solid #1a1a1a;
   }
   #portrait-bar b { color: #cfe4ff; font-size: 14px; display: block; margin-bottom: 2px; }
-  @media (orientation: portrait) and (max-width: 820px) {
-    #board { display: none; }
-    #sidebar, body.sidebar-hidden #sidebar {
-      display: flex;
-      width: 100%; min-width: 0; max-width: none;
-      border-left: none;
-      padding-top: env(safe-area-inset-top);
-    }
-    #sidebar-head, #show-btn, body.sidebar-hidden #show-btn { display: none; }
-    #portrait-bar { display: block; }
-    #add-btn { display: block; }
+  /* 세로(할일 목록) 모드 — 기기 회전 또는 전환 버튼으로 body.is-list 가 켜진다 */
+  body.is-list #board { display: none; }
+  body.is-list #sidebar, body.is-list.sidebar-hidden #sidebar {
+    display: flex;
+    width: 100%; min-width: 0; max-width: none;
+    border-left: none;
+    padding-top: env(safe-area-inset-top);
   }
+  body.is-list #sidebar-head,
+  body.is-list #show-btn,
+  body.is-list.sidebar-hidden #show-btn { display: none; }
+  body.is-list #portrait-bar { display: block; }
+  body.is-list #add-btn { display: block; }
+
+  /* ===== 가로/세로 전환 버튼 (오른쪽 아래) ===== */
+  #orient-btn {
+    position: fixed; z-index: 850;
+    right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
+    height: 38px; padding: 0 14px; border-radius: 19px;
+    background: #1d1d1d; border: 1px solid #333; color: #ccc;
+    font-size: 13px; font-weight: 600;
+    display: flex; align-items: center; gap: 6px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.5);
+  }
+  #orient-btn:active { filter: brightness(1.4); }
 </style>
 </head>
 <body>
@@ -211,12 +224,13 @@
       <div id="sidebar-head">
         <button id="hide-btn" aria-label="목록 숨기기">›</button>
       </div>
-      <div id="portrait-bar"><b>할일 관리</b>보드를 분할·배치하려면 가로로 돌려 주세요.</div>
+      <div id="portrait-bar"><b>할일 관리</b>보드를 분할·배치하려면 오른쪽 아래 <b style="display:inline">▦ 보드</b> 버튼을 누르세요.</div>
       <button id="add-btn">＋ 할일 추가</button>
       <div id="todo-list"></div>
     </div>
   </div>
   <button id="show-btn" aria-label="목록 보기">‹</button>
+  <button id="orient-btn" aria-label="가로/세로 전환"></button>
 
   <div id="ghost"></div>
   <div id="overlay"></div>
@@ -692,10 +706,8 @@ function closeSwipe() {
   openSwipe = null;
 }
 
-// 세로(할일 관리 전용) 모드 여부 — CSS 미디어쿼리와 동일 조건
-function isPortrait() {
-  return window.matchMedia("(orientation: portrait) and (max-width: 820px)").matches;
-}
+// 세로(할일 관리 전용) 모드 여부 — 현재 적용 중인 뷰 모드와 동일
+function isPortrait() { return isListMode(); }
 
 document.getElementById("add-btn").addEventListener("click", openAddTodo);
 
@@ -852,6 +864,38 @@ function setSidebarHidden(hidden) {
 document.getElementById("hide-btn").addEventListener("click", () => setSidebarHidden(true));
 document.getElementById("show-btn").addEventListener("click", () => setSidebarHidden(false));
 setSidebarHidden(localStorage.getItem(SIDEBAR_KEY) === "1");
+
+/* ===================== 가로/세로 전환 ===================== */
+// forcedView: "auto"(기기 회전 따름) | "board"(가로 강제) | "list"(세로 강제)
+let forcedView = "auto";
+
+// 기기 회전만으로 판단했을 때 세로(목록) 모드인지
+function autoIsList() {
+  return window.matchMedia("(orientation: portrait) and (max-width: 820px)").matches;
+}
+// 강제 설정이 우선, 없으면 기기 회전을 따른다
+function isListMode() {
+  if (forcedView === "list") return true;
+  if (forcedView === "board") return false;
+  return autoIsList();
+}
+const orientBtn = document.getElementById("orient-btn");
+function applyView() {
+  const list = isListMode();
+  document.body.classList.toggle("is-list", list);
+  // 버튼은 "전환될 방향"을 보여준다
+  orientBtn.textContent = list ? "▦ 보드" : "▤ 목록";
+}
+orientBtn.addEventListener("click", () => {
+  forcedView = isListMode() ? "board" : "list";
+  applyView();
+});
+// 실제로 회전이 동작하는 기기에서는 회전 시 자동 모드로 복귀(물리 회전 우선)
+window.matchMedia("(orientation: portrait)").addEventListener("change", () => {
+  forcedView = "auto";
+  applyView();
+});
+applyView();
 
 /* ===================== 시작 ===================== */
 renderAll();
