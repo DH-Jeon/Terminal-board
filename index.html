@@ -616,7 +616,9 @@ function openPanePopup(paneId) {
     document.getElementById("p-done").onclick = () => openCompleteConfirm(paneId);
     document.getElementById("p-postpone").onclick = () => { postponeTodo(paneId); closeModal(); };
     document.getElementById("p-save").onclick = () => {
-      editTodo(pane.todoId, document.getElementById("p-title").value, document.getElementById("p-memo").value);
+      const title = document.getElementById("p-title").value;
+      if (!title.trim()) { toast("제목을 입력하세요"); return; }
+      editTodo(pane.todoId, title, document.getElementById("p-memo").value);
       closeModal();
     };
   }
