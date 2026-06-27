@@ -228,6 +228,9 @@
   }
   /* 드래그 미리보기 라벨도 보드와 같은 방향으로 돌려 글자가 바로 보이게 */
   body.force-landscape #ghost { transform: rotate(90deg); }
+  /* 화면만 90도 돌린 상태라 제스처 축도 뒤바뀐다. 진짜 가로처럼 할일을
+     보드로 끌 수 있게 touch-action 축을 pan-y→pan-x 로 뒤집는다 */
+  body.force-landscape .todo-item { touch-action: pan-x; }
 </style>
 </head>
 <body>
