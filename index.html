@@ -215,6 +215,19 @@
     box-shadow: 0 2px 10px rgba(0,0,0,.5);
   }
   #orient-btn:active { filter: brightness(1.4); }
+  /* 모달이 열리면 떠 있는 버튼을 숨긴다 — 회전 모드에서 모달 위로 떠오르는 것 방지 */
+  body.modal-open #show-btn, body.modal-open #orient-btn { display: none; }
+
+  /* ===== 가로 강제: 세로로 든 채 화면만 90도 돌려 가로처럼 ===== */
+  body.force-landscape #app {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 100vh; height: 100vw;
+    transform: translate(-50%, -50%) rotate(90deg);
+    transform-origin: center center;
+  }
+  /* 드래그 미리보기 라벨도 보드와 같은 방향으로 돌려 글자가 바로 보이게 */
+  body.force-landscape #ghost { transform: rotate(90deg); }
 </style>
 </head>
 <body>
@@ -228,13 +241,14 @@
       <button id="add-btn">＋ 할일 추가</button>
       <div id="todo-list"></div>
     </div>
+    <!-- 모달·토스트는 #app 안에 둬야 가짜 가로 모드(회전)에서 보드와 같이 회전한다 -->
+    <div id="overlay"></div>
+    <div id="toast"></div>
   </div>
   <button id="show-btn" aria-label="목록 보기">‹</button>
   <button id="orient-btn" aria-label="가로/세로 전환"></button>
 
   <div id="ghost"></div>
-  <div id="overlay"></div>
-  <div id="toast"></div>
 
 <script>
 "use strict";
@@ -533,10 +547,15 @@ function openModal(html, opts) {
   const x = (opts && opts.noX) ? "" : '<button class="modal-x" id="modal-x" aria-label="닫기">✕</button>';
   overlay.innerHTML = '<div class="modal">' + x + html + "</div>";
   overlay.classList.add("show");
+  document.body.classList.add("modal-open");
   const xb = document.getElementById("modal-x");
   if (xb) xb.onclick = closeModal;
 }
-function closeModal() { overlay.classList.remove("show"); overlay.innerHTML = ""; }
+function closeModal() {
+  overlay.classList.remove("show");
+  overlay.innerHTML = "";
+  document.body.classList.remove("modal-open");
+}
 overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
 
 let toastTimer = null;
@@ -883,6 +902,9 @@ const orientBtn = document.getElementById("orient-btn");
 function applyView() {
   const list = isListMode();
   document.body.classList.toggle("is-list", list);
+  // 폰을 세로로 든 채 보드(가로) 모드를 강제하면 화면을 90도 돌려 가로처럼 보이게 한다
+  const rotate = !list && window.matchMedia("(orientation: portrait)").matches;
+  document.body.classList.toggle("force-landscape", rotate);
   // 버튼은 "전환될 방향"을 보여준다
   orientBtn.textContent = list ? "▦ 보드" : "▤ 목록";
 }
