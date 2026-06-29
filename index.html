@@ -902,6 +902,7 @@ function isListMode() {
   return autoIsList();
 }
 const orientBtn = document.getElementById("orient-btn");
+const appEl = document.getElementById("app");
 function applyView() {
   const list = isListMode();
   // 보드(가로)로 가면 세로에서 열어둔 삭제 버튼을 닫는다 — 가로에선 스와이프 삭제 비활성
@@ -910,6 +911,16 @@ function applyView() {
   // 폰을 세로로 든 채 보드(가로) 모드를 강제하면 화면을 90도 돌려 가로처럼 보이게 한다
   const rotate = !list && window.matchMedia("(orientation: portrait)").matches;
   document.body.classList.toggle("force-landscape", rotate);
+  // 회전 박스 크기는 CSS의 100vh/100vw(레이아웃 뷰포트) 대신 실제 보이는
+  // 픽셀(innerWidth/innerHeight)로 직접 잡는다. iOS 독립앱에서는 vh/vw가
+  // 실제 화면과 어긋나 회전 후 화면 밖으로 잘리기 때문이다.
+  if (rotate) {
+    appEl.style.width = window.innerHeight + "px";
+    appEl.style.height = window.innerWidth + "px";
+  } else {
+    appEl.style.width = "";
+    appEl.style.height = "";
+  }
   // 버튼은 "전환될 방향"을 보여준다
   orientBtn.textContent = list ? "▦ 보드" : "▤ 목록";
 }
@@ -926,7 +937,9 @@ window.matchMedia("(orientation: portrait)").addEventListener("change", () => {
 // 아직 회전 전 값으로 남아 있어 위 change 시점의 applyView()가 잘못 판정될 수 있다.
 // viewport가 실제로 정착되면 resize가 발생하므로, 자동 모드일 때 한 번 더 교정한다.
 window.addEventListener("resize", () => {
-  if (forcedView === "auto") applyView();
+  // 자동 모드 교정뿐 아니라, 회전 강제(force-landscape) 중에도 뷰포트가
+  // 바뀌면 #app 픽셀 크기를 다시 맞춰야 잘림이 생기지 않는다.
+  if (forcedView === "auto" || document.body.classList.contains("force-landscape")) applyView();
 });
 applyView();
 
