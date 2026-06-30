@@ -546,11 +546,14 @@ function renderTodos() {
 /* ===================== 모달 / 토스트 ===================== */
 const overlay = document.getElementById("overlay");
 
+let modalOpenedAt = 0;
 function openModal(html, opts) {
   const x = (opts && opts.noX) ? "" : '<button class="modal-x" id="modal-x" aria-label="닫기">✕</button>';
   overlay.innerHTML = '<div class="modal">' + x + html + "</div>";
   overlay.classList.add("show");
   document.body.classList.add("modal-open");
+  // 모달을 연 탭의 합성(synthesized) click이 배경에 떨어져 곧바로 닫는 것을 막는다(삼성 브라우저)
+  modalOpenedAt = performance.now();
   const xb = document.getElementById("modal-x");
   if (xb) xb.onclick = closeModal;
 }
@@ -559,7 +562,11 @@ function closeModal() {
   overlay.innerHTML = "";
   document.body.classList.remove("modal-open");
 }
-overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
+overlay.addEventListener("click", e => {
+  // 모달이 막 열린 직후의 합성 click은 무시(뜨자마자 닫히는 버그 방지)
+  if (performance.now() - modalOpenedAt < 400) return;
+  if (e.target === overlay) closeModal();
+});
 
 let toastTimer = null;
 const toastEl = document.getElementById("toast");
